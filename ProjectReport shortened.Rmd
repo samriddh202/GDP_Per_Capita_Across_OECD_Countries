@@ -1,0 +1,485 @@
+---
+title: "GDP Per Capita Across OECD Countries"
+author: "Marie Eberlein, Yabing Feng, Samriddh Gupta, and Yueyang Liu"
+date: "12/9/2019"
+header-includes:
+    - \usepackage{setspace}\doublespacing
+output: 
+  pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Executive Summary    
+Our analysis considered the relationship between GDP per capita and growth in GDP, education, the likelihood of protests, industries, life expectancy, and net exports in 40 countries. Our analyses suggest that GDP is associated with all of these factors except for net exports. Countries with higher GDP tend to see lower growth, fewer protests, higher life expectancy, and a greater proportion of economic value added from professional, scientific, technical, and administrative fields. However, our analyses were constrained by the small size of the data set, variables that were not available for all countries or in all years, and departures from normality in the data.  
+
+# Introduction  
+The Organization for Economic Cooperation and Development (OECD) tracks detailed economic and demographic metrics for its member countries, as well as more limited information on non-member countries that are major contributors to the world economy. One of these metrics is Gross Domestic Product per capita, one of the predominant variables used to evaluate the economic health of a country. We used the data set to better understand how GDP per capita is related to some of the other variables in the data set, exploring relationships with growth, education, industry, life expectancy, and trade. We also created a separate data set showing whether a protest occurred in the countries and looked at whether the probability of a protest occurring is related to GDP.  
+
+## About the Data  
+The data set includes information for 40 countries plus aggregate numbers for all OECD countries, the European Union, and the Euro area. Data are presented for 2006 to 2014, but not all metrics are available for each year. There are 184 variables in the data set.  
+
+## Literature Review  
+We used the results of existing studies on GDP to inform our analyses. Barro (2001) explored the association between growth in GDP and human capital accumulation, including educational attainment and quality of education, for 100 countries from 1960 to 1990. They found a small positive association between GDP per capita and average number of years of secondary school for men and a larger association between GDP per capita and test scores (used as a proxy for education quality). News coverage about protests in Chile has attributed it to high levels of income inequality and suggested that more broad-spread growth in GDP would prevent protests (Bunyan, 2019). Turečková, K. and S. Martinát (2015) found that a greater proportion of the economies of developed countries are in highly skilled fields requiring technology. Leung and Wang (2010) found that income disparities and illiteracy rates were negatively associated with life expectancy. GDP per capita was positively associated with life expectancy. Gorman (2003) found a positive relationship for countries between net exports and higher GDP.  
+
+# Initial Hypotheses  
+1. Growth in GDP per capita will be negatively associated with starting GDP and positively associated with investments in education and test scores.
+2. Protests will be more likely in countries with countries with faster growth in GDP and lower income inequality.
+3. Countries with higher GDP per capita will have a larger proportion of value added from professional, scientific, technical, and administrative fields. 
+4. Life expectancy will be higher in countries with higher GDP per capita, more physicians per 1000 people, and higher health expenditures.
+5. Countries with higher GDP will have lower imports of goods and higher exports of goods.
+
+# Exploratory Data Analysis  
+## Growth in GDP  
+To understand what factors affect growth in GDP per capita, we calculated the percent change in GDP from 2006 to 2014. This growth variable was used as the response variable in a multiple linear regression model. Initially, the model was fit using starting GDP (in 2006), investments in primary education, investments in secondary education, investments in tertiary education, girls' PISA reading scores, boys' PISA reading scores, girls' PISA math scores, and boys' PISA math scores. Because there is a large spread of GDP values, we used a log transform of GDP in the model.  
+The linear model tests the hypothesis that the coefficients for all the response variables are 0. For the linear model $Y = \beta_0 + \beta_1*X_1 + ... + \beta_8*X_8$:  
+  $H_0$: $\beta_1 = \beta_2 = \beta_3 = \beta_4 = \beta_5 = \beta_6 = \beta_7 = \beta_8 = 0$  
+  $H_1$: At least one inequality  
+The initial fit of the model that only when all of the variables are included, there is very strong evidence that the log of GDP is negatively associated with growth in GDP (p-value is very small). Investments in primary education (coded in the data as EXEDULV_T1A) has a p-value of 0.0571, so the observed relationship may not be due to the natural variation of the data, but the evidence is not as strong. All other variables have higher p-values. (The summary of the initial regression model is in Appendix B.)   
+```{r, include=FALSE}
+suppressPackageStartupMessages(library(tidyverse))
+oecd_data <- read_csv("./Data/OECD_data.csv",col_names=TRUE,
+         cols_only("SUB"=col_character(),
+                     "LOCATION"=col_character(),
+                     "Country"=col_character(),
+                     "Year"=col_double(),
+                     "Unit"=col_character(),
+                     "PowerCode"=col_character(),
+                     "Reference Period"=col_character(),
+                     "Value"=col_double(),
+                     "Flags"=col_character()
+                     ))
+oecd_data %>% 
+  select(Country,Year,SUB,Value) %>% 
+  filter(Year==2014|Year==2006,
+           SUB=="SIZEGDP_T1") %>% 
+  spread(key=Year,value=Value) %>% 
+  rename(GDP2006='2006',GDP2014='2014') %>% 
+  mutate(growth=(GDP2014-GDP2006)/GDP2006) %>% 
+  filter( !is.na(growth) ) ->
+  gdp_growth
+oecd_data %>% 
+  select(Country,Year,SUB,Value) %>% 
+  filter(Year==2012,
+         SUB=="EXEDULV_T1A"|SUB=="EXEDULV_T1D"|SUB=="EDUTEREXPND_T1C" |
+           SUB=="INCINEQUAL_T1A"|SUB=="PISA_T1G"|SUB=="PISA_T1E"|
+           SUB=="PISA_T1K"|SUB=="PISA_T1I",
+         !is.na(Value) ) %>% 
+  spread(key=SUB,value=Value) ->
+  ed_var
+gdp_growth %>% 
+  inner_join(ed_var,by="Country") ->
+  growth_by_ed
+full_reg_ed <- lm(growth~EDUTEREXPND_T1C+EXEDULV_T1A+EXEDULV_T1D+log(GDP2006)+INCINEQUAL_T1A+PISA_T1K+PISA_T1E+PISA_T1G+PISA_T1I,data=growth_by_ed)
+```
+To better understand the relationship, we removed the least significant variables. We also checked the regression diagnostics and took the log transform of growth to address non-constant variance. The final model includes only the starting GDP and investments in primary education.   
+```{r, include=FALSE}
+reg_prim <- lm(log(growth)~EXEDULV_T1A+log(GDP2006),data=growth_by_ed)
+```
+```{r, echo=FALSE}
+summary(reg_prim)
+```
+
+## Predicting Protests  
+To understand what factors are related to protests occurring in a particular country, we first created a data set indicating whether there had been a protest in each country since 2006. For the purpose of this analysis, we looked for sustained, wide-spread protests with a specific political goal. Of the 40 countries in the data set, protests occurred in 23.  
+We used logistic regression to model the probability that a protest would occur. To check the model, we kept a few observations out of the training data set. Logistic regression fits coefficients for the following model, where $\beta$ is a vector of coefficients and X is a matrix of predictors.  
+$$ P(protest) =  e^ { \beta * X} / (1+e^{\beta * X}) $$
+We test $H_0: \beta = 0$ vs $H_1: \beta \neq 0$  
+The model is initially fit using growth in GDP, GDP in 2006, investments in secondary education, number of immigrants, income inequality (Gini index), unemployment levels, and imports and exports. We used step-wise selection to identify which predictors should remain in the model. Only growth and 2006 GDP were retained in the final model.  
+The final model is:
+$$ P(protest) =  e^ { 97.215 - 16.812 * growth - 9.053*log(GDP2006)} / (1+e^ { 97.215 - 16.812 * growth - 9.053*log(GDP2006)}) $$
+We see there is a negative relationship between GDP and growth and the likelihood that a protest will occur. A summary of the model can be found in Appendix B.    
+Assuming that a protest did not occur in a country where the predicted probability is less than 50%, when we use the final model to predict whether there were protests in the testing data that was withheld, it correctly predicts all of the countries.  
+```{r, include=FALSE}
+oecd_data %>% 
+  select( Country, Year, SUB, Value) %>% 
+  filter(Year==2007,
+         SUB=="MIGUNEMP_T1E"|
+         SUB=="MIGUNEMP_T1F") %>% 
+  spread(key=SUB,value=Value) ->
+  unemployment
+oecd_data %>% 
+  select( Country, Year, SUB, Value) %>% 
+  filter(Year==2010,
+         SUB=="MERTRADE_T2"|
+         SUB=="MERTRADE_T3") %>% 
+  spread(key=SUB,value=Value) ->
+  trade
+oecd_data %>% 
+  select( Country, Year, SUB, Value) %>% 
+  filter(Year==2006,
+         SUB=="NETMIGR_T1G") %>% 
+  spread(key=SUB,value=Value) ->
+  migration
+protest <- read_csv("./Data/protests.csv")
+protest %>% 
+  inner_join(growth_by_ed,by="Country") %>% 
+  inner_join(trade,by="Country") %>% 
+  inner_join(unemployment,by="Country") %>% 
+  inner_join(migration,by="Country") ->
+  protest_predictors
+set.seed(2)
+Z <- sample(nrow(protest_predictors),3)
+
+full_glm <- glm(Protest~growth+log(GDP2006)+MERTRADE_T2+MERTRADE_T3+
+                  INCINEQUAL_T1A+EXEDULV_T1D+NETMIGR_T1G,
+    family="binomial",
+    data=protest_predictors[-Z,])
+
+step(full_glm,direction="backward")
+
+glm_fit <- glm(Protest~growth+log(GDP2006),family="binomial",
+    data=protest_predictors[-Z,])
+prob <- predict(glm_fit,newdata=protest_predictors[Z,],type="response")
+yhat <- 1*(prob>0.5)
+```
+```{r}
+mean(yhat==protest_predictors$Protest[Z])
+```
+## Value Added  
+```{r, include=FALSE}
+suppressPackageStartupMessages(library(tidyverse))
+oecd_data <- read_csv("./Data/OECD_data.csv",col_names=TRUE,
+         cols_only("SUB"=col_character(),
+                     "LOCATION"=col_character(),
+                     "Country"=col_character(),
+                     "Year"=col_double(),
+                     "Value"=col_double()
+                     ))
+oecd = na.omit(oecd_data)
+# subjects (10)
+subjects <- read_csv("./Data/OECD_data.csv", col_names=TRUE,
+         cols_only("SUB"=col_character(),
+         "Subject"=col_character()))
+subjects %>%
+  filter(grepl('VALADD',SUB)) -> subjects
+# GDP in 2014
+oecd %>%
+  filter(SUB == "SIZEGDP_T1", Year == "2014") %>%
+  arrange(Value) -> oecd_GDP
+oecd_GDP
+# Proportion of value added in 2014
+oecd_data %>%
+  filter(Year == "2014") %>%
+  filter(SUB=="VALADDAC_T1B" | SUB=="VALADDAC_T1A" | SUB=="VALADDAC_T1H" | SUB=="VALADDAC_T1D" | SUB=="VALADDAC_T1C" | SUB=="VALADDAC_T1F" | SUB=="VALADDAC_T1I" | SUB=="VALADDAC_T1G" | SUB=="VALADDAC_T1J" | SUB=="VALADDAC_T1E") %>%
+  spread(key = SUB, value = Value) %>%
+  mutate(total_value_added = VALADDAC_T1B + VALADDAC_T1A + VALADDAC_T1H + VALADDAC_T1D + VALADDAC_T1C + VALADDAC_T1F + VALADDAC_T1I + VALADDAC_T1G + VALADDAC_T1J + VALADDAC_T1E) %>%
+  mutate(prop_X1 = VALADDAC_T1B / total_value_added) %>%
+  mutate(prop_X2 = VALADDAC_T1A / total_value_added) %>%
+  mutate(prop_X3 = VALADDAC_T1H / total_value_added) %>%
+  mutate(prop_X4 = VALADDAC_T1D / total_value_added) %>%
+  mutate(prop_X5 = VALADDAC_T1C / total_value_added) %>%
+  mutate(prop_X6 = VALADDAC_T1F / total_value_added) %>%
+  mutate(prop_X7 = VALADDAC_T1I / total_value_added) %>%
+  mutate(prop_X8 = VALADDAC_T1G / total_value_added) %>%
+  mutate(prop_X9 = VALADDAC_T1J / total_value_added) %>%
+  mutate(prop_X10 = VALADDAC_T1E / total_value_added) %>%
+  na.omit() %>% 
+  select(Country, prop_X1:prop_X10, total_value_added) -> value_added
+value_added
+# Combine
+inner_join(oecd_GDP, value_added, by = "Country") %>%
+  arrange(Value) %>%
+  na.omit() %>% 
+  select(LOCATION, Country, Value, prop_X1:prop_X10) -> combine_oecd
+combine_oecd
+# regression line
+combine_oecd %>%
+  filter(Country != "Luxembourg") ->
+  no_LUX
+reg_x3 <- lm(log(Value) ~ prop_X3, data = combine_oecd)
+```
+From 2006 to 2014, GDP per capita grew in each country, except Greece whose data was distorted by the "Greek government-debt crisis". We wanted to test the hypothesis that there is a positive relation between GDP per capita and the proportion of high technical activities in the economy. By observing the data, technical terms are shown in the "Value Added" factor and described as "Value added in professional; scientific; technical; administration and support services activities(x3)". And we will use the data in 2014 to avoid the effect of the financial crisis happened in 2008. There are 10 different terms in the category of value added. The response variable will be GDP per capita (log(Value)), and the proportion of the high technical activities, prop_X3 (calculated from X3 divided by total value added) would be independent variable.  
+Value added in the data measured as the value of output minus the value of intermediate consumption. It reflects the value generated by producing goods and services. Also represents the income available for the contributions of labour and capital to the production process.   
+Here is the model: $log(Y) = \beta_{0} + \beta_{3}X_{3i} + \varepsilon _{i}$  
+Here is the hypothesis:
+  $H_0$: $\beta_{3} = 0$  vs  $H_1$: $\beta_{3} \neq 0$  
+A summary of the regression model can be found in Appendix B. The model would be: $\hat Y = 9.8195 + 7.4754 X_3$  
+By looking at the result, there is statistical significance with p value equal to 0.0063, which has strong evidence to say there is a correlation between technical activities and GDP per capita. But the R^2 is 0.2573, suggesting that technical activities are not the only thing that can influence GDP per capita of a country, and the correlation of 0.4214 also supports this point.  
+```{r}
+cor(combine_oecd[,c(3,6)])
+```
+A scatter diagram of the data is below. (Note that we used the smooth line instead of using the straight line to give more story of the data behind.) There are 28 countries in this data. One blue dots on the top: Luxembourg (log(97272.57) = 4.99). This country has a highest GDP per capita in 2014 that is likely to drag the analysis into a biased result. Thus we will exclude Luxembourg in the regression model. 
+```{r, echo=F}
+ggplot(data=combine_oecd, mapping = aes(y = log10(Value), x = prop_X3,  color = Country)) +
+  geom_point()+
+  ylab("GDP Per Capital")+
+  xlab("prop_X3")+
+  geom_smooth(se = FALSE, color = "black", linetype = "dashed") +
+  theme_bw()+
+  ggtitle("X3 vs. Value in 2014")
+```
+After removing Luxembourg, the result we had followed our expectation. The new regression line:$\hat Y = 9.9316 + 5.9706 X_3$, the significant level decrease to 0.0125, $R^2$ decrease to 0.2246, and the correlation decrease to 0.3989. However, there is still evidence supporting our hypothesis.    
+
+## Life expectancy  
+```{r echo=F}
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(lubridate))
+suppressPackageStartupMessages(library(ggplot2))
+suppressPackageStartupMessages(library(GGally))
+```
+```{r echo=FALSE}
+oecd_data <- read_csv("./Data/hg.csv",col_names=TRUE,
+         cols_only("LOCATION"=col_factor(),
+                     "Subject"=col_factor(),
+                      "Country"=col_factor(),
+                     "Year"=col_factor(),
+                     "Value"=col_double()
+                     )) 
+oecd_data %>% 
+  spread(key=Subject,value = Value)  ->oecd_data
+oecd_data %>% 
+  mutate(Pri=(`GDP per capita`*`Private expenditure on health`/100)) %>% 
+  mutate(Pub=(`GDP per capita`*`Public expenditure on health`/100)) %>%
+  mutate(phy=(10*`Practising physicians`)) %>%  
+  mutate(Life=(`Life expectancy at birth: total`)) %>% 
+  mutate(GDP =(`GDP per capita`)) %>% 
+  na.omit() %>% 
+  rename(Popu = `Population levels`) %>% 
+  rename(Loc = "LOCATION") %>% 
+  #view() %>% 
+  select(Loc,Year,GDP,Popu,Pri,Pub,phy,Life) %>% 
+  na.omit()->oecd_data1
+
+```
+To figure out the relationship between GDP per capita and life expectancy, we first select some the variables may be related to life expectancy for 46 countries from 2006 to 2014. These are:  
+   1.GDP  
+   2.Year/Country  
+   3.Number of practising physicians in 1000 people  
+   4.Population  
+   5.Expenditure on health (Public/Private)  
+
+At first we used a linear model to fit the relationship between the GDP and life expectancy and update the model based on the residual plot. The updated model looks like:  
+$$Y=\beta_{0}+\beta_{1}x_{1}+\beta_{2}x_{2}+\varepsilon _{1}$$
+- $\beta_{0}$ The intercept of the mean line.  
+- $\beta_{1}$ The effect on Y when change GDP given the other variables in the model.  
+- $\beta_{2}$ The effect on Y when change $GDP^2$ given the other variables in the model.  
+- $x_{1}$ GDP value  
+- $x_{2}$ $GDP^2$ value  
+```{r echo=FALSE}
+oecd_data1$GDP2<-(oecd_data1$GDP)^2
+lmout2<-lm(Life~GDP+GDP2,data=oecd_data1)
+#summary(lmout2)
+broom::tidy(lmout2)[c(1,2,5)]
+```
+we also use the step function to fit the model with all variables,the final model is: $Y=\beta_{0}+\beta_{1}x_{1}+\beta_{2}x_{2}+\beta_{3}x_{3}+\beta_{4}x_{4}+\varepsilon_{1}$  
+- $\beta_{1}$ The effect on Y when change private expenditure given the other variables in the model.  
+- $\beta_{2}$ The effect on Y when change public expenditure given the other variables in the model.  
+- $\beta_{3}$ The effect on Y when change GDP given the other variables in the model.  
+- $\beta_{4}$ The effect on Y when change $GDP^2$ given the other variables in the model.  
+- $x_{1}$ private expenditur  
+- $x_{2}$ public expenditure  
+- $x_{3}$ GDP value  
+- $x_{4}$ $GDP^2$ value  
+```{r echo=F}
+lmout<-lm(Life~
+          #Loc+
+          Year+
+          Pri+
+          Pub+
+          GDP+
+          GDP2+
+          phy,
+          data=oecd_data1)
+stepout <- step(object = lmout, trace = F)
+broom::tidy(stepout)[c(1,2,5)]
+```
+We still see heavy tails in qqplot but the residual plot looks better. We believe the errors come from data missing since we had remove all the lines that contain "NA".    
+Also, there are too many factors in the data set which, contributes to the overfitting. To improve this we could combine different countries with similar GDP. We could also include additional variables like education level and environmental conditions.  
+
+## Net Exports  
+Imports and exports are an important part of every country's revenue. Not every area in the world has all the stuff available and the money exchange in these exports can sometimes be the only revenue that a country has. For this project we focus on how GDP is related to the imports, exports, and net exports of the country. Countries' net exports can be used to calculate the expenditure power of that country. It can also be used to calculate whether a country is developed or not. For this project, we assumed that the countries with a higher GDP are developed countries.  
+To see if higher net exports were associated with higher GDP, we tested the following:  
+  $H_0$: We obtain negative results  
+  $H_1$: We get a positive relation of GDP and Net Exports (Exports of Goods - Import of Goods)   
+```{r echo=FALSE}
+
+knitr::opts_chunk$set(echo = FALSE)
+suppressPackageStartupMessages(library(tidyverse))
+library(tidyr)
+oecd_data <- read_csv("./Data/OECD_data.csv",col_names=TRUE,
+         cols_only("SUB"=col_character(),
+                     "Country"=col_character(),
+                     "Year"=col_double(),
+                     "Value"=col_double(),
+                     "Subject"=col_character()
+                     ))
+oecd_data %>% 
+  select(Country,Year,Subject,Value) %>% 
+  filter( Subject=="Imports of goods") %>%
+  filter(Country!="OECD - Total") %>% 
+  spread(key=Year,value=Value) %>% 
+  rename(IMP2010='2010',IMP2014='2014')->
+  datimp
+
+oecd_data %>%
+  select(Country,Year,Subject,Value) %>% 
+  filter( Subject=="Exports of goods") %>% 
+  filter(Country!="OECD - Total") %>% 
+  spread(key=Year,value=Value) %>% 
+  rename(EXP2010='2010',EXP2014='2014')->
+  datexp
+
+datimp %>% 
+  select(Country,IMP2010,IMP2014)->
+  datimp
+
+datexp %>% 
+  select(Country,EXP2010,EXP2014)->
+  datexp
+
+
+datimp %>% 
+  inner_join(datexp,by="Country") %>% 
+  mutate(NetExp2010=EXP2010-IMP2010,
+         NetExp2014=EXP2014-IMP2014)->
+  datnet
+
+
+#head(datimp)
+#head(datexp)
+#head(datnet)
+
+oecd_data %>% 
+  select(Country,Year,Subject,Value) %>% 
+  filter(Subject=="GDP per capita") %>% 
+  filter(Year=="2010"|Year=="2014") %>% 
+  filter(Country!="OECD - Total") %>%
+  spread(key=Year,value=Value) %>% 
+  rename(GDP2010='2010',GDP2014='2014')->
+  datgdp
+
+datnet %>% 
+  select(Country,IMP2010,IMP2014,EXP2010,EXP2014,NetExp2010,NetExp2014) %>% 
+  inner_join(datgdp,by="Country")->
+  datgdpnet
+
+datgdpnet %>% 
+  select(Country,IMP2010,IMP2014,EXP2010,EXP2014,NetExp2010,NetExp2014,GDP2010,GDP2014)->
+  datgdpnet
+
+datgdpnet %>% drop_na()->
+  datgdpnet
+#summary(datgdpnet)
+
+```
+
+Summary statistics for GDP, imports, and exports can be seen in Appendix B.  
+The data we expected would show that imports decrease as the GDP increases, but that was not the trend that we found. In this particular data set, the imports of goods increase as the GDP increases. For the exports of goods, the data shows that as the GDP increases the export of goods also increase, which we expected. Since both the imports and exports increase as the GDP grows and both of them have a similar mean, the net exports came out to be close to zero. The following shows a summary of the data.  
+```{r, echo=FALSE}
+datgdpnet %>% 
+  select(NetExp2010,NetExp2014) %>% 
+  summary()
+```
+Plotting the graph to get the better understanding of the relationship between the net exports and the GDP gives results as shown in the graph.As we can see from the graph, there was a negative trend in the net exports VS GDP. The trend is similar for both years. We also see a huge outlier in both cases. Both outliers are the United States of America. Germany has the highest net exports for both years. For the final analysis test, I used the correlation between the two variables (net exports and GDP for both years) to verify the result and to get the conclusion. The result of the correlation is stated below.  
+```{r, echo=FALSE}
+datgdpnet %>% 
+  select(GDP2010,NetExp2010) %>% 
+  cor(use = "everything")
+
+datgdpnet %>% drop_na()->
+  datgdpnet
+datgdpnet %>% 
+  select(GDP2014,NetExp2014) %>% 
+  cor(use = "everything" )
+```
+# Data-Driven Hypotheses  
+Based on the results of our analysis, we developed the following revised hypotheses:  
+1. Growth in GDP per capita is negatively associated with starting GDP and positively associated with investments in primary education.  
+2. Countries with higher GDP per capita and higher growth in GDP are less likely to have protests.  
+3. Countries with higher GDP per capita will have a larger proportion of value added from professional, scientific, technical, and administrative fields. (Unchanged)  
+4. GDP per capita some other variables are associated with life expectancy.  
+5. There is not a significant relationship between net exports and GDP.  
+
+# Discussion    
+We found a highly significant relationship between growth in GDP, starting GDP, and investments in primary education. However, checking the regression diagnostics, there appear to be departures from normality, which we confirmed with a Shapiro-Wilk test. This raises some concerns about the validity of our conclusions from the model. The low p-value of 0.00076 (seen in Appendix B) means we reject the null hypothesis that the residuals are normally distributed.  
+There were also concerns about the reliability of the model predicting protests. We know from the linear model that GDP per capita and growth in GDP are collinear, which would make the model less stable. The model fitting process is also quite sensitive to changes in the initial variables that are included and the training data set that is selected. Small changes to either will prevent the model from converging when fitting the coefficients.  
+Looking at how GDP per capita is related to the proportion of value added, from the data we observe that the proportion of the high technical activities ranges from 0.0517 (Greece, log(25950.39) = 4.41) to 0.1363 (Netherlands, log(47634.76) = 4.68). 0.1 is the cut-off of the proportion of the high technical activities. Since there are 10 categories, any country with a value smaller than 0.1 is considered to have a lower proportion. Most of the countries have lower proportions. There are 10 countries had higher proportion: Ireland (0.1021), Euro area (19 countries, 0.1050), European Union (28 countries, 0.1051), Germany (0.1106), Luxembourg (0.1193), United Kingdom (0.1219), Israel (0.1242), France(0.1277), Belgium (0.1356), and the Netherlands (0.1363). In the graph above, we saw that the dashed line started to decrease from its peak, around 0.113, which is slightly larger than the cut off (0.1). The increasing trend slows down at the proportion range of 0.075 to 0.0875 and recovers after 0.0875, which continues until 0.113. The slope becomes smaller at the proportion range of 0.075 to 0.0875 and starts to increase after and stop around 0.113.    
+Overall, the hypothesis, there is a positive relation between GDP per capita and the proportion of high technical activities in the economy is reasonable within a certain range. However, when the proportion of the technical activities exceeds 0.113, the GDP per capita will depict a negative track.  
+In the ggpair plot we can see a positive relationship between GDP per capita and life expectancy. We also tried include more related variables. The final liner model's R-squared value is 0.6025 and p-value is 2.2e-16, so we can say GDP per capita and some other variables are associated with life expectancy.  
+For the relationship between GDP and net exports, we see that the correlation value is negative and the value of r is close to zero. Based on this, we concluded that there is no relation between the net exports and GDP in this data set. One of the reasons for this relationship may be that the US was a huge outlier. For future analysis, we could scale the net exports by population to see if that affects the relationship.  
+Our analyses suggest that there is reason for the continued prominence of GDP in evaluating the economic health of a country. While there are challenges with the data that raise questions about the validity of some analyses, we do see strong relationships between GDP per capita and health, education, types of jobs, and living conditions. The analyses could be further improved by seeing if these trends also hold true in non-OECD countries that were not included in the data set, as well as using time series analysis to see if the relationships change over time.   
+
+# Appendix A: References  
+Barro, R.J. (2001). Education and Economic Growth. *OECD.* http://search.oecd.org/education/innovation-education/1825455.pdf  
+Bunyan, R. (2019). 18 Killed as Hundreds of Thousands of Protestors Take to the Streets in Chile. Here’s What to Know. *Time.* https://time.com/5710268/chile-protests/  
+Gorman, T. (2003). The Complete Idiot's Guide to Economics. https://www.infoplease.com/homework-help/social-studies/gdp-and-players-three-imports-and-exports  
+Leung, M. C., & Wang, Y. (2010). Endogenous health care, life expectancy and economic growth. *Pacific Economic Review*, *15*(1), 11-31.  
+Turečková, K. and S. Martinát. (2015). Quaternary sector and extended sectoral structure of the economy in the selected European countries. *Working Paper in Interdisciplinary Economics and Business Research no. 10. Silesian University in Opava, School of Business Administration in Karviná.* http://www.iivopf.cz/images/Working_papers/WPIEBS_10_Tureckova_Martinat.pdf  
+
+# Appendix B: Additional R Code  
+In the initial model predicting growth in GDP, most of the variables in the model were not significant.  
+```{r}
+summary(full_reg_ed)
+```
+Diagnostic plots for the growth linear regression model and a test for non-constant variance. After taking the log transform of growth, there is not sufficient evidence to believe the variance is not constant. However, a Shapiro-Wilk test shows there is evidence the residuals are not normally distributed.   
+```{r}
+par(mfrow=c(2,2))
+plot(reg_prim)
+car::ncvTest(reg_prim) #tests for non-constant variance
+shapiro.test(rstudent(reg_prim)) #tests normality
+```
+Summary of the logistic regression model predicting the probability of a protest occurring:  
+```{r}
+summary(glm_fit)
+```
+Summary of the linear regression model comparing GDP per capita and the proportion of value added in professional, scientific, technical, and adminstrative fields.
+```{r}
+summary(reg_x3)
+```
+
+Prior to exploring the relationship between life expectancy and GDP, we use the GGally package to draw plots and make initial explorations of the relationship between variables.  
+```{r echo=FALSE ,mysize=TRUE, size='\\tiny'}
+ggpairs(oecd_data1, columns = c(6,7,8))
+```
+  
+```{r echo=FALSE ,mysize=TRUE, size='\\tiny'}
+ggpairs(oecd_data1, columns = c(3,4,5,8))
+```
+
+```{r echo=FALSE}
+lmout1<-lm(Life~GDP,data=oecd_data1)
+qplot(x=fitted(lmout1), y = resid(lmout1)) +
+    geom_hline(yintercept = 0, color = "blue", lty = 2)
+qplot(sample=resid(lmout1), geom = "qq") + geom_qq_line()
+```
+We see a curve in the residual plot, to fit the assumption well, we add a  squared GDP value  
+
+Summary statistics of GDP, imports, and exports:
+```{r}
+datgdpnet %>% 
+  select(GDP2010,GDP2014) %>% 
+  summary()
+
+datgdpnet %>% 
+  select(IMP2010,IMP2014) %>% 
+  summary()
+datgdpnet %>% 
+  select(EXP2010,EXP2014) %>% 
+  summary()
+
+```
+
+Comparing GDP per capita and net exports, we see a negative relationship both in 2010 and 2014.  
+```{r}
+library(ggplot2)
+
+ggplot(data = datgdpnet,mapping = aes(y=NetExp2010,x=GDP2010))+
+  geom_point()+
+  ylab("Net Export")+
+  xlab("GDP per capita")+
+  geom_smooth(se = FALSE, method = lm)+
+  theme_bw()+
+  ggtitle("Net-Export VS GDP per Capita in 2010")
+
+ggplot(data = datgdpnet,mapping = aes(y=NetExp2014,x=GDP2014))+
+  geom_point()+
+  ylab("Net Export")+
+  xlab("GDP per capita")+
+  geom_smooth(se = FALSE, method = lm)+
+  ggtitle("Net-Export VS GDP per Capita in 2014")+
+  theme_bw()
+```
+

@@ -1,0 +1,631 @@
+---
+title: "GDP Per Capita Across OECD Countries"
+author: "Marie Eberlein, Yabing Feng, Samriddh Gupta, and Yueyang Liu"
+date: "12/2/2019"
+output: beamer_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+## Introduction
+
+The Organization for Economic Cooperation and Development (OECD) tracks detailed economic and demographic metrics for its member countries, as well as more limited information on non-member countries that are major contributors to the world economy. One of these metrics is Gross Domestic Product per capita, one of the predominant variables used to evaluate the economic health of a country.  
+
+We used the data set to better understand how GDP is related to some of the other variables in the data set, exploring relationships with trade, industry, education, health, and growth.  
+
+## About the Data  
+
+- The data set includes information for 40 countries plus aggregate numbers for all OECD countries, the European Union, and the Euro area. 
+- Data are presented for 2006 to 2014, but not all metrics are available for each year. 
+- There are 184 variables in the data set.  
+
+## Research Questions  
+
+- What factors affect growth in GDP?
+- How does the proportion of people in different professional fields vary for countries with higher and lower GDP?
+- How is GDP related to health expenditures?
+- What is the relationship between GDP and the distribution of financial versus non-financial assets?
+- How does relate GDP to net exports?  
+
+## Growth in GDP  
+
+**Hypothesis:** There will be a negative relationship with growth in GDP and starting GDP and a positive relationship with growth in GDP and investments in education. For the relationship $growth = \beta_0 + \beta_1*GDP + \beta_2*investment$,  
+
+  $H_0$: $\beta_0 = \beta_1 = \beta_2 = 0$  
+  $H_1$: At least one inequality  
+```{r, include=FALSE}
+suppressPackageStartupMessages(library(tidyverse))
+oecd_data <- read_csv("./Data/OECD_data.csv",col_names=TRUE,
+         cols_only("SUB"=col_character(),
+                     "LOCATION"=col_character(),
+                     "Country"=col_character(),
+                     "Year"=col_double(),
+                     "Unit"=col_character(),
+                     "PowerCode"=col_character(),
+                     "Reference Period"=col_character(),
+                     "Value"=col_double(),
+                     "Flags"=col_character()
+                     ))
+oecd_data %>% 
+  select(Country,Year,SUB,Value) %>% 
+  filter(Year==2014|Year==2006,
+           SUB=="SIZEGDP_T1") %>% 
+  spread(key=Year,value=Value) %>% 
+  rename(GDP2006='2006',GDP2014='2014') %>% 
+  mutate(growth=(GDP2014-GDP2006)/GDP2006) %>% 
+  filter( !is.na(growth) ) ->
+  gdp_growth
+oecd_data %>% 
+  select(Country,Year,SUB,Value) %>% 
+  filter(Year==2012,
+         SUB=="EXEDULV_T1A"|SUB=="EXEDULV_T1D"|SUB=="EDUTEREXPND_T1C" |
+           SUB=="INCINEQUAL_T1A"|SUB=="PISA_T1G"|SUB=="PISA_T1E"|
+           SUB=="PISA_T1K"|SUB=="PISA_T1I",
+         !is.na(Value) ) %>% 
+  spread(key=SUB,value=Value) ->
+  ed_var
+gdp_growth %>% 
+  inner_join(ed_var,by="Country") ->
+  growth_by_ed
+z <- which(is.na(growth_by_ed$EXEDULV_T1A)|is.na(growth_by_ed$EXEDULV_T1D))
+reg_prim_transform <- lm(log(growth)~EXEDULV_T1A+log(GDP2006),
+                         data=growth_by_ed[-z,])
+```
+  
+Using stepwise selection, we find a significant relationship between growth in GDP and starting GDP as well as between growth in GDP and investments in primary education. There does not appear to be a strong relationship between growth in GDP and investments in secondary education, tertiary education, or test scores.  
+    $log(growth) = 11.86 + 1.14e-4*education - 1.39*log(GDP)$
+
+## GDP Growth Relationship
+```{r echo=FALSE}
+knitr::knit_hooks$set(mysize = function(before, options, envir) {
+  if (before) 
+    return(options$size)
+})
+```
+```{r mysize=TRUE, size='\\small'}
+summary(reg_prim_transform)
+```
+
+## Results of Growth  
+
+- Given the recent news about protests in Chile despite strong economic growth there, we wanted to understand if the variables in the data set could be used to predict whether a protest would occur in a particular country.  
+- To determine this, we coded each country as yes or no for having a sustained, widespread protest with a specific political goal since 2006.  
+- Using this data set, we used logistic regression and stepwise selection to see if we could predict the protests.  
+- The initial model included growth in GDP, GDP in 2006, investments in secondary education, number of immigrants, income inequality (Gini index), unemployment levels, and imports and exports. Only growth and 2006 GDP were retained in the final model.  
+
+## Predicting Protests  
+
+- The resulting model predicts the probability of a protest according to the following:
+$P(protest) = exp(97.215-16.812*growth-9.053*log(GDP))/(1+exp(97.215-16.812*growth-9.053*log(GDP)))$
+- This model correctly predicts the results of a small testing set that was withheld when fitting the model.  
+- However, there is reason to believe the model is unreliable. We know from the linear model that GDP per capita and growth in GDP are collinear, which would make the model less stable.  
+- The model fitting process is also quite sensitive to changes in the initial variables that are included and the training data set that is selected. Small changes to either will prevent the model from converging when fitting the coefficients.
+
+```{r, include=FALSE}
+oecd_data <- read_csv("./Data/OECD_data.csv",col_names=TRUE,
+         cols_only("SUB"=col_character(),
+                     "LOCATION"=col_character(),
+                     "Country"=col_character(),
+                     "Year"=col_double(),
+                     "Value"=col_double()
+                     ))
+oecd = na.omit(oecd_data)
+# GDP in 2014
+oecd %>%
+  filter(SUB == "SIZEGDP_T1", Year == "2014") %>%
+  arrange(Value) -> oecd_GDP
+oecd_GDP
+# Proportion of value added in 2014
+oecd_data %>%
+  filter(Year == "2014") %>%
+  filter(SUB=="VALADDAC_T1B" | SUB=="VALADDAC_T1A" | SUB=="VALADDAC_T1H" | SUB=="VALADDAC_T1D" | SUB=="VALADDAC_T1C" | SUB=="VALADDAC_T1F" | SUB=="VALADDAC_T1I" | SUB=="VALADDAC_T1G" | SUB=="VALADDAC_T1J" | SUB=="VALADDAC_T1E") %>%
+  spread(key = SUB, value = Value) %>%
+  mutate(total_value_added = VALADDAC_T1B + VALADDAC_T1A + VALADDAC_T1H + VALADDAC_T1D + VALADDAC_T1C + VALADDAC_T1F + VALADDAC_T1I + VALADDAC_T1G + VALADDAC_T1J + VALADDAC_T1E) %>%
+  mutate(prop_X1 = VALADDAC_T1B / total_value_added) %>%
+  mutate(prop_X2 = VALADDAC_T1A / total_value_added) %>%
+  mutate(prop_X3 = VALADDAC_T1H / total_value_added) %>%
+  mutate(prop_X4 = VALADDAC_T1D / total_value_added) %>%
+  mutate(prop_X5 = VALADDAC_T1C / total_value_added) %>%
+  mutate(prop_X6 = VALADDAC_T1F / total_value_added) %>%
+  mutate(prop_X7 = VALADDAC_T1I / total_value_added) %>%
+  mutate(prop_X8 = VALADDAC_T1G / total_value_added) %>%
+  mutate(prop_X9 = VALADDAC_T1J / total_value_added) %>%
+  mutate(prop_X10 = VALADDAC_T1E / total_value_added) %>%
+  na.omit() %>% 
+  select(Country, prop_X1:prop_X10, total_value_added) -> value_added
+value_added
+# Combine
+inner_join(oecd_GDP, value_added, by = "Country") %>%
+  arrange(Value) %>%
+  na.omit() %>% 
+  select(LOCATION, Country, Value, prop_X1:prop_X10) -> combine_oecd
+combine_oecd
+```
+
+## Introduction of data 
+
+Focus on the **value added** in difference areas  
+- here are all the areas:  
+```{r mysize=TRUE, size='\\tiny'}
+subjects <- read_csv("./Data/OECD_data.csv", col_names=TRUE,
+         cols_only("SUB"=col_character(),
+         "Subject"=col_character()))
+subjects %>%
+  filter(grepl('VALADD',SUB)) -> subjects
+head(distinct(subjects),10)
+```
+
+## What is Value Added?
+
+- Measured as the value of output minus the value of intermediate consumption.  
+- Value added reflects the value generated by producing goods and services.  
+- Value added also represents the income available for the contributions of labour and capital to the production process.  
+
+## Hypothesis  
+
+There will be a positive relationship in GDP per capital with the fraction of economic value being added by activities of professional; scientific; technical; administration and support services($X_3$). 
+
+## Model(1):
+Model: $log(Y) = \beta_{0} + \beta_{3}X_{3i} + \varepsilon _{i}$
+
+  $H_0$: $\beta_{3} = 0$  
+  $H_1$: $\beta_{3} \neq 0$ 
+
+## Scatter Diagram(1):
+```{r}
+ggplot(data = combine_oecd, mapping = aes(y = log(Value), x = prop_X3)) +
+  geom_point()+
+  ylab("GDP Per Capital")+
+  xlab("prop_X3")+
+  geom_smooth(se = FALSE, color = "black", linetype = "dashed") +
+  geom_smooth(se = FALSE, method = lm)+
+  theme_bw()+
+  ggtitle("X3 vs. GDP Per Capita in 2014")
+```
+
+## Summary of X3 (1):
+
+```{r mysize=TRUE, size='\\small'}
+reg_x3 <- lm(log(Value) ~ prop_X3, data = combine_oecd)
+summary(reg_x3)
+```
+
+## Model(2): 
+
+Model: $log(Y)=\beta_{0}+\beta_{1}X_{1i}+\beta_{2}X_{2i}+\beta_{3}X_{3i}...+\beta_{10}X_{10i}+\varepsilon _{i}$
+
+  $H_0$: $\beta_{1} = \beta_{2} ... \beta_{10} = 0$  
+  $H_1$: At least one inequality 
+
+## Relationship of GDP and value added in 10 different areas(2): 
+
+- Count all of the 10 variables is the setup to get some sense how those variables worked  
+- Overall the slope of X3 decrease from 7.4754 to 0.2890, but p-value changed to 0.933283, which was not expected. By looking at the p-value, X6 & X7 stand out
+
+## 
+
+```{r mysize=TRUE, size='\\tiny'}
+reg <- lm(log(Value) ~ prop_X1 + prop_X2 + prop_X3 + prop_X4 + prop_X5 + prop_X6 + prop_X7 + prop_X8 + prop_X9 + prop_X10, data = combine_oecd)
+summary(reg)
+```
+
+
+## Model(3):
+
+- deletes some notices of having too many independent variable, only focuses on the areas that we are interested in:  
+
+```{r mysize=TRUE, size='\\tiny'}
+reg_new <- lm(log(Value) ~ prop_X3 + prop_X4 + prop_X6 + prop_X7, data = combine_oecd)
+summary(reg_new)
+```
+
+## Model Improvment (4):  
+
+- Focus on the non-financial parts that we are interested in  
+- There are some evidence of the relationship between X3 and GDP per capital. A unit change on the porportion of X3 will cause 3.9577 change in GDP per capital on average  
+
+```{r mysize=TRUE, size='\\tiny'}
+reg_new1 <- lm(log(Value) ~ prop_X3 + prop_X4 + prop_X7, data = combine_oecd)
+summary(reg_new1)
+```
+## Correlation between those variables:
+```{r}
+
+suppressPackageStartupMessages(library(GGally))
+ggpairs(combine_oecd, columns = c(3,6,7,10))
+
+
+```
+## Model (5)
+- Focus on the financial parts:
+```{r}
+reg_financial <- lm(log(Value) ~ prop_X6, data = combine_oecd)
+summary(reg_financial)
+```
+## Scatter Diagram(5)
+- Focus on the financial parts:
+```{r}
+ggplot(data = combine_oecd, mapping = aes(y = log(Value), x = prop_X6)) +
+  geom_point()+
+  ylab("GDP Per Capital")+
+  xlab("prop_X3")+
+  geom_smooth(se = FALSE, color = "black", linetype = "dashed") +
+  geom_smooth(se = FALSE, method = lm)+
+  theme_bw()+
+  ggtitle("X3 vs. GDP Per Capita in 2014")
+```
+
+
+## Topic: life expectancy  
+  
+In the OECD data set:  
+Are there any variable(s) have effect on people's life expectancy?
+
+
+## Observational units
+   1.GDP  
+   2.Year/Country  
+   3.Number of practising physicians in 1000 people  
+   4.Population  
+   5.Expenditure on health(Public/Private)  
+
+### Response Variable:Life expectancy
+### $H_0$:There are some relationship between observational unit and life  
+### $H_1$:There is no relationship between them   
+## Data analyse
+
+Tidy the data value s 
+Select the columns and remove the rows containing NA
+```{r echo=F}
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(lubridate))
+suppressPackageStartupMessages(library(ggplot2))
+suppressPackageStartupMessages(library(GGally))
+```
+
+```{r echo=FALSE}
+oecd_data <- read_csv("./Data/hg.csv",col_names=TRUE,
+         cols_only("LOCATION"=col_factor(),
+                     "Subject"=col_factor(),
+                      "Country"=col_factor(),
+                     "Year"=col_factor(),
+                     "Value"=col_double()
+                     )) 
+oecd_data %>% 
+  spread(key=Subject,value = Value)  ->oecd_data
+oecd_data %>% 
+  mutate(Pri=(`GDP per capita`*`Private expenditure on health`/100)) %>% 
+  mutate(Pub=(`GDP per capita`*`Public expenditure on health`/100)) %>%
+  mutate(phy=(10*`Practising physicians`)) %>%  
+  mutate(Life=(`Life expectancy at birth: total`)) %>% 
+  mutate(GDP =(`GDP per capita`)) %>% 
+  na.omit() %>% 
+  rename(Popu = `Population levels`) %>% 
+  rename(Loc = "LOCATION") %>% 
+  #view() %>% 
+  select(Loc,Year,GDP,Popu,Pri,Pub,phy,Life) %>% 
+  na.omit()->oecd_data1
+
+head(oecd_data1)
+
+```
+
+## Explore the units relationship  
+
+```{r echo=FALSE}
+ggpairs(oecd_data1, columns = c(6,7,8))
+```
+
+## Explore the units relationship  
+
+```{r echo=FALSE}
+ggpairs(oecd_data1, columns = c(3,4,5,8))
+```
+
+## Some possible relationships
+
+ 1.Public expenditure and physicians  
+ 2.Public expenditure and life expectancy  
+ 3.Private expenditure and life expectancy  
+ 4.GDP and physicians  
+ 5.GDP and life expectancy  
+ 6.GDP and private expenditure  
+  
+We still need do more research on those variables
+
+## Linear model
+$Y=\beta_{0}+\beta_{1}x_{1i}+\beta_{2}x_{2i}+\beta_{3}x_{3i}...+\beta_{7}x_{7i}+\varepsilon _{1}$  
+- $\beta_{0}$ The intercept of the mean line.  
+- $\beta_{1}$ The effect on Y when change location given the other variables in the model.  
+- $\beta_{2}$ The effect on Y when change year given the other variables in the model.  
+- $\beta_{3}$ The effect on Y when change private expenditure given the other variables in the model.  
+- $\beta_{4}$ The effect on Y when change private GDP given the other variables in the model.  
+- $\beta_{5}$ The effect on Y when change public expenditure given the other variables in the model.  
+- $\beta_{7}$ The effect on Y when change physicians given the other variables in the model.    
+- $\varepsilon _{1}$ Noise . 
+
+## Use "step" do more research
+```{r echo=F}
+lmout<-lm((Life)~
+          Loc+
+          Year+
+          (Pri)+
+          #Popu+
+          (GDP*
+          Pub*
+          phy),
+          data=oecd_data1)
+#broom::tidy(lmout)[c(1,2,5)]
+stepout <- step(object = lmout, trace = F)
+#stepout
+broom::tidy(stepout)[c(1,2,5)]
+```
+
+
+## Conclusion
+We see some outline here
+```{r echo=F}
+qplot(x=fitted(stepout), y = resid(stepout)) + 
+  geom_hline(yintercept = 0, color = "blue", lty = 2)
+```
+
+## Conclusion
+Heavy tails
+```{r echo=FALSE}
+qplot(sample=resid(stepout), geom = "qq") + geom_qq_line()
+```
+
+
+## Conclusion
+```{r mysize=TRUE, size='\\tiny'}
+summary(stepout)
+```
+## Error analyse
+### Error
++ Data missing
++ Few variables under one factor  
+
+### Solutions
++ Combine countries with similar GDP
++ Research more variables like edcuation level, environment  
+
+## Conclusion  
++ Life ~ Loc + Year + Pri + Popu + GDP + Pub + phy + GDP:Pub + GDP:phy + Pub:phy  
++ Multiple R-squared:  0.9967,	Adjusted R-squared:  0.9959 
++ F-statistic:  1285 on 52 and 222 DF  
++ p-value: < 2.2e-16  
+
+
+We may accept the $H_0$
+
+
+
+
+```{r, include=FALSE}
+oecd_data <- read_csv("./Data/OECD_data.csv",col_names=TRUE,
+         cols_only("SUB"=col_character(),
+                     "Country"=col_character(),
+                     "Year"=col_double(),
+                     "Value"=col_double(),
+                     "Subject"=col_character()
+                     ))
+oecd_data %>% 
+  select(Country,Year,Subject,Value) %>% 
+  filter( Subject=="Imports of goods") %>%
+  filter(Country!="OECD - Total") %>% 
+  spread(key=Year,value=Value) %>% 
+  rename(IMP2010='2010',IMP2014='2014')->
+  datimp
+
+oecd_data %>%
+  select(Country,Year,Subject,Value) %>% 
+  filter( Subject=="Exports of goods") %>% 
+  filter(Country!="OECD - Total") %>% 
+  spread(key=Year,value=Value) %>% 
+  rename(EXP2010='2010',EXP2014='2014')->
+  datexp
+
+datimp %>% 
+  select(Country,IMP2010,IMP2014)->
+  datimp
+
+datexp %>% 
+  select(Country,EXP2010,EXP2014)->
+  datexp
+
+
+datimp %>% 
+  inner_join(datexp,by="Country") %>% 
+  mutate(NetExp2010=EXP2010-IMP2010,
+         NetExp2014=EXP2014-IMP2014)->
+  datnet
+
+
+#head(datimp)
+#head(datexp)
+#head(datnet)
+
+oecd_data %>% 
+  select(Country,Year,Subject,Value) %>% 
+  filter(Subject=="GDP per capita") %>% 
+  filter(Year=="2010"|Year=="2014") %>% 
+  filter(Country!="OECD - Total") %>%
+  spread(key=Year,value=Value) %>% 
+  rename(GDP2010='2010',GDP2014='2014')->
+  datgdp
+
+datnet %>% 
+  select(Country,IMP2010,IMP2014,EXP2010,EXP2014,NetExp2010,NetExp2014) %>% 
+  inner_join(datgdp,by="Country")->
+  datgdpnet
+
+datgdpnet %>% 
+  select(Country,IMP2010,IMP2014,EXP2010,EXP2014,NetExp2010,NetExp2014,GDP2010,GDP2014)->
+  datgdpnet
+
+datgdpnet %>% drop_na()->
+  datgdpnet
+#summary(datgdpnet)
+
+```
+
+## Net Export
+
+Net exports are the difference between a country's total value of exports and total value of imports. Depending on whether a country imports more goods or exports more goods, net exports can be a positive or negative value.
+
+## My Hypothesis
+Countries with higher GDP will have lower imports of goods and higher exports of goods
+
+- H0: We obtain negative results.
+- H1: We get a positive relation of GDP and Net Exports (Exports of Goods  -  Import of Goods)
+
+## Summary GDP
+
+```{r GDP, echo = TRUE}
+datgdpnet %>% 
+  select(GDP2010,GDP2014) %>% 
+  summary()
+```
+
+## Summary of Imports 
+```{r Imp, echo = TRUE}
+datgdpnet %>% 
+  select(IMP2010,IMP2014) %>% 
+  summary()
+```
+
+
+## Plots
+
+```{r}
+ggplot(data = datgdpnet,mapping = aes(y=IMP2010,x=GDP2010))+
+  geom_point()+
+  ylab("Import of Gooods")+
+  xlab("GDP per capita")+
+  geom_smooth(se = FALSE, method = lm)+
+  theme_bw()+
+  ggtitle("Import of Goods VS GDP per Capita in 2010")
+```
+
+## Plots
+
+```{r}
+ggplot(data = datgdpnet,mapping = aes(y=IMP2014,x=GDP2014))+
+  geom_point()+
+  ylab("Import of Gooods")+
+  xlab("GDP per capita")+
+  geom_smooth(se = FALSE, method = lm)+
+  theme_bw()+
+  ggtitle("Import of Goods VS GDP per Capita in 2014")
+```
+
+
+## Summary Of Exports
+
+```{r Exp, echo = TRUE}
+datgdpnet %>% 
+  select(EXP2010,EXP2014) %>% 
+  summary()
+```
+
+## Plots
+
+
+```{r}
+ggplot(data = datgdpnet,mapping = aes(y=EXP2010,x=GDP2010))+
+  geom_point()+
+  ylab("Export of Gooods")+
+  xlab("GDP per capita")+
+  geom_smooth(se = FALSE, method = lm)+
+  theme_bw()+
+  ggtitle("Export of Goods VS GDP per Capita in 2010")
+```
+
+## Plots
+
+```{r}
+ggplot(data = datgdpnet,mapping = aes(y=EXP2014,x=GDP2014))+
+  geom_point()+
+  ylab("Export of Gooods")+
+  xlab("GDP per capita")+
+  geom_smooth(se = FALSE, method = lm)+
+  theme_bw()+
+  ggtitle("Export VS GDP per Capita in 2014")
+```
+
+
+## Summary  of Net-Export 
+
+```{r Net-Export, echo = TRUE}
+datgdpnet %>% 
+  select(NetExp2010,NetExp2014) %>% 
+  summary()
+```
+
+
+## Plots
+
+```{r GDP2010}
+library(ggplot2)
+
+ggplot(data = datgdpnet,mapping = aes(y=NetExp2010,x=GDP2010))+
+  geom_point()+
+  ylab("Net Export")+
+  xlab("GDP per capita")+
+  geom_smooth(se = FALSE, method = lm)+
+  theme_bw()+
+  ggtitle("Net-Export VS GDP per Capita in 2010")
+```
+
+## Plots
+
+```{r GDP2014}
+library(ggplot2)
+
+ggplot(data = datgdpnet,mapping = aes(y=NetExp2014,x=GDP2014))+
+  geom_point()+
+  ylab("Net Export")+
+  xlab("GDP per capita")+
+  geom_smooth(se = FALSE, method = lm)+
+  ggtitle("Net-Export VS GDP per Capita in 2014")+
+  theme_bw()
+```
+
+## Test for data
+
+```{r cor, echo = TRUE}
+datgdpnet %>% 
+  select(GDP2010,NetExp2010) %>% 
+  cor(use = "everything")
+
+datgdpnet %>% drop_na()->
+  datgdpnet
+datgdpnet %>% 
+  select(GDP2014,NetExp2014) %>% 
+  cor(use = "everything" )
+```
+
+## Results
+- for both of the years we get negative correlation Value of r.
+- Value of r is close to zero so we can say that there is no correlation in them
+
+## Cause of error/Comments
+- Outlier
+- Data Issue
+- Old Data
+- Applied to few countries
+
+## Conclusions      
+
+- GDP is related to many other economic, health, education measures,trade,value added,expenditure power, and life expectancy but the relationships are sometimes complex.  
+- Analysis with this data set is limited because it includes only 40 Observations.   
+- Non-constant variance and departures from normality reduce the validity of some of the analyses.  
+- Additional analysis should seek to better address assumptions that have not been met in the analysis.  
+- There is also room for time series analysis to better understand how the countries have changed over time.  
+
+##  
+
+
+###          Questions/Concerns/Comments?
